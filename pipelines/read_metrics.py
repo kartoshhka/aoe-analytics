@@ -23,6 +23,7 @@ def preview(table_name, limit=5):
 
 # Preview each gold table
 preview("gold.apm")
+preview("gold.player_summary")
 preview("gold.age_timings")
 preview("gold.openings")
 preview("gold.winrate_civ")
