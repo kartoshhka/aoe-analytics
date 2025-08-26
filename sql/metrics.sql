@@ -18,13 +18,13 @@ GROUP BY match_id, player_id;
 ------------------------------------------------------------
 CREATE OR REPLACE TABLE gold.age_timings AS
 SELECT
-    match_id,
-    player_id,
-    activity AS age_research,
-    MIN(seconds_since_start) AS reached_at
+    civilization,
+    activity,
+    AVG(seconds_since_start) AS avg_time
 FROM events_clean
 WHERE LOWER(activity) LIKE '%age%'
-GROUP BY match_id, player_id, activity;
+GROUP BY civilization, activity
+ORDER BY avg_time
 
 ------------------------------------------------------------
 -- 3. Opening build orders – first 50 actions of high-elo players
