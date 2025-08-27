@@ -17,27 +17,9 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements.txt
-      - name: Prepare minimal data
+      - name: Symlink test data
         run: |
-          # Data sample
-          echo '<?xml version='1.0' encoding='UTF-8'?>\
-          <log xmlns="http://www.xes-standard.org/" xes.version="2016" xes.features=" ">\
-          <extension name="Concept" prefix="concept" uri="http://www.xes-standard.org/concept.xesext"/>\
-          <extension name="Time" prefix="time" uri="http://www.xes-standard.org/time.xesext"/>\
-          <string key="origin" value="csv"/><trace><string key="concept:name" value="demo"/>\
-          <string key="strategy" value="Unknown"/>\
-          <string key="match_id" value="m1"/><string key="player_id" value="p1"/>\
-          <string key="civilization_category" value="CivCat1"/>\
-          <string key="civilization" value="Civ1"/><string key="map_type" value="Map1"/>\
-          <event><string key="concept:name" value="Test Event 1"/>\
-          <date key="time:timestamp" value="2024-01-01T00:00:00Z"/><int key="win" value="1"/>\
-          <int key="amount" value="1"/><int key="@@index" value="0"/>\
-          <int key="@@case_index" value="0"/></event>\
-          <event><string key="concept:name" value="Test Event 2"/>\
-          <date key="time:timestamp" value="2024-01-01T00:09:30Z"/>\<int key="win" value="0"/>\
-          <int key="amount" value="1"/><int key="@@index" value="1"/>
-          <int key="@@case_index" value="0"/></event>\
-          </trace></log>' > data/aoe_interaction_log_1_of_10.xes
+          ln -s $(pwd)/tests/test_data.xes $(pwd)/data/test_data.xes
       - name: Run pipelines
         run: |
           python pipelines/extract_xes.py
