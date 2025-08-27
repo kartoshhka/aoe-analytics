@@ -1,0 +1,40 @@
+import duckdb
+import pytest
+from pathlib import Path
+
+@pytest.fixture(scope="module")
+def con():
+    DB = Path("warehouse/aoe.duckdb")
+    assert DB.exists(), "DuckDB file missing; run transform_events pipeline first."
+    con = duckdb.connect(str(DB))
+    with open("sql/metrics.sql", "r") as f:
+        sql_script = f.read()
+    con.execute(f"CREATE SCHEMA IF NOT EXISTS bronze;")
+    con.execute(f"CREATE SCHEMA IF NOT EXISTS events_clean;")
+    con.execute(f"CREATE SCHEMA IF NOT EXISTS gold;")
+    con.execute(sql_script)
+    yield con
+    con.close()
+
+def test_apm_has_expected_columns(con):
+    result = con.execute("SELECT * FROM gold.apm LIMIT 1").fetchdf()
+    expected_cols = {"match_id", "player_id", "apm"}
+    assert expected_cols.issubset(result.columns)
+
+
+def test_age_timings(con):
+    result = con.execute("SELECT * FROM gold.age_timings LIMIT 1").fetchdf()
+    expected_cols = {"civilization", "activity", "avg_time_min"}
+    assert expected_cols.issubset(result.columns)
+
+
+def test_openings(con):
+    result = con.execute("SELECT * FROM gold.openings LIMIT 1").fetchdf()
+    expected_cols = {"civilization", "match_id", "player_id", "elo", "activity", "action_rank"}
+    assert expected_cols.issubset(result.columns)
+
+
+def test_player_summary(con):
+    result = con.execute("SELECT * FROM gold.player_summary LIMIT 1").fetchdf()
+    expected_cols = {"player_id", "total_matches", "total_wins", "total_loses", "winrate", "max_elo"}
+    assert expected_cols.issubset(result.columns)

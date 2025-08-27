@@ -24,6 +24,6 @@ jobs:
         run: |
           python pipelines/extract_xes.py
           python pipelines/transform_events.py
-          duckdb warehouse/aoe.duckdb -c ".read sql/metrics.sql"
+          python pipelines/read_metrics.py
       - name: Run tests
         run: pytest -q
