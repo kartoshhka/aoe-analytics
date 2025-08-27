@@ -47,11 +47,11 @@ CREATE OR REPLACE TABLE gold.age_timings AS
 SELECT
     civilization,
     activity,
-    ROUND(AVG(seconds_since_start) / 60.0, 2) AS avg_time_min
+    ROUND(AVG(seconds_since_start) / 60.0, 2) AS avg_time_mins
 FROM events_clean
 WHERE REGEXP_MATCHES(LOWER(activity), '(\b)age(\b)')
 GROUP BY civilization, activity
-ORDER BY civilization;
+ORDER BY civilization, avg_time_mins;
 
 ------------------------------------------------------------
 -- 3. Opening build orders – first 50 actions of high-elo players
@@ -60,6 +60,9 @@ CREATE OR REPLACE TABLE gold.openings AS
 WITH ranked AS (
     SELECT
         civilization,
+        civilization_category,
+        map_type,
+        strategy,
         match_id,
         player_id,
         elo,
@@ -72,15 +75,21 @@ WITH ranked AS (
     FROM events_clean
 )
 SELECT
-    civilization,
-    match_id,
-    player_id,
-    elo,
-    activity,
-    action_rank
-FROM ranked
-WHERE action_rank <= 50
-ORDER BY match_id, player_id, action_rank;
+    r.civilization,
+    r.civilization_category,
+    r.map_type,
+    r.strategy,
+    r.match_id,
+    r.player_id,
+    r.elo,
+    r.activity,
+    r.action_rank,
+    pmr.win  -- Add win flag from player_match_results
+FROM ranked r
+LEFT JOIN gold.player_match_results pmr
+    ON r.player_id = pmr.player_id AND r.match_id = pmr.match_id
+WHERE r.action_rank <= 50
+ORDER BY r.elo, r.match_id, r.player_id, r.action_rank;
 
 ------------------------------------------------------------
 -- 4. Winrate by civilization – dynamic civilizations
