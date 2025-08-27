@@ -27,5 +27,6 @@ preview("gold.player_summary")
 preview("gold.age_timings")
 preview("gold.openings")
 preview("gold.winrate_civ")
+preview("gold.winrate_strat")
 
 con.close()

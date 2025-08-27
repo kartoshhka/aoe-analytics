@@ -110,6 +110,15 @@ winrate_query = f"""
 """
 winrate_df = con.execute(winrate_query).fetchdf()
 
+# Winrate by strategy
+civ_conditions = " OR ".join([f"civilizations LIKE '%{c}%'" for c in selected_civ])
+winrate_civ_query = f"""
+    SELECT strategy, total_games, winrate, civilizations
+    FROM gold.winrate_strat
+    WHERE {civ_conditions}
+"""
+winrate_civ_df = con.execute(winrate_civ_query).fetchdf()
+
 # ----------------------------------------
 # 4️⃣ Display metrics in Streamlit
 # ----------------------------------------
@@ -157,3 +166,6 @@ create_actions_heatmap(opening_df)
 
 st.header("🏆 Winrate by Civilization")
 st.dataframe(winrate_df)
+
+st.header("♟️ Winrate by Strategy")
+st.dataframe(winrate_civ_df)

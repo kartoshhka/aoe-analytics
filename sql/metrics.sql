@@ -106,3 +106,19 @@ FROM (
 )
 GROUP BY civilization
 ORDER BY winrate DESC;
+------------------------------------------------------------
+-- 4. Winrate by strategy
+------------------------------------------------------------
+CREATE OR REPLACE TABLE gold.winrate_strat AS
+SELECT
+    strategy,
+    COUNT(*) FILTER (WHERE win = 1) * 1.0 / COUNT(*) AS winrate,
+    COUNT(*) AS total_games,
+    STRING_AGG(DISTINCT civilization, ', ') AS civilizations,
+FROM (
+    SELECT DISTINCT strategy, match_id, player_id, civilization, win
+    FROM events_clean
+    WHERE strategy IS NOT NULL
+)
+GROUP BY strategy
+ORDER BY winrate DESC;
