@@ -8,6 +8,11 @@ This pipeline enables scalable analysis of Age of Empires player ratings, openin
 
 This project extracts player event logs from Age of Empires `.xes` files, transforms them into a DuckDB analytics database, and provides a Streamlit dashboard for game strategy insights.
 
+One of the key features of this project is the analysis of unknown player strategies using match event logs. The goal is to identify repeating build patterns that may represent previously undiscovered strategies. By examining clusters of similar sequences and their associated win rates, this analysis can reveal effective strategies and potential imbalances in the game.
+
+<img width="1325" height="800" alt="image" src="https://github.com/user-attachments/assets/bc4c5ee8-bdff-4a79-845f-b8467d29bc2e" />
+
+
 ---
 
 ## Workflow Overview
@@ -19,13 +24,6 @@ This project extracts player event logs from Age of Empires `.xes` files, transf
 
 ---
 ## 0️⃣ Python environment & install deps
-### Requirements
-
-- Python 3.10+
-- DuckDB
-- Pandas
-- lxml
-- Streamlit
 
 **Run:**
 ```bash
@@ -61,7 +59,7 @@ python pipelines/transform_events.py
 
 ---
 
-## 3️⃣ (Optional) Generate Gold Metrics Tables
+## 3️⃣ Generate Gold Metrics Tables
 
 - Executes SQL scripts from `sql/metrics.sql` to create advanced analytics tables in the `gold` schema:
   - Player summary
@@ -69,19 +67,34 @@ python pipelines/transform_events.py
   - Age timings
   - Opening build orders
   - Winrate by civilization
+  - Winrate by strategy
 
 **Run:**
 ```bash
 python pipelines/read_metrics.py
 ```
+---
+## 4️⃣ Analyze uknown strategies
 
+- (Optional) Known strategies are analyzed to determine similarity levels across different metrics: n-gram cosine similarity, Jaccard similarity, and Levenshtein similarity.
+- Player action sequences with unknown strategies are converted into n-grams (ngram_n = 3) to capture recurring motifs.
+- Similar sequences are grouped using MinHash + LSH for efficient candidate bucketing.
+- Clusters are refined with DBSCAN, keeping only clusters where at least one player repeats the same build order, highlighting likely real strategies rather than random matches.
+- Cluster coherence is evaluated using n-gram cosine similarity, Jaccard similarity, and Levenshtein similarity.
+- Cluster stats are recorded: number of matches, number of players, and win rate.
+- High win rates for repeating patterns may indicate novel or imbalanced strategies.
+
+**Run:**
+```bash
+python pipelines/discover_strategies.py
+```
 ---
 
-## 4️⃣ Visualize with Streamlit Dashboard
+## 5️⃣ Visualize with Streamlit Dashboard
 
 - The dashboard (`app/Dashboard.py`) connects to the DuckDB database.
 - Interactive filters for Elo, civilization, and build order length.
-- Displays player summaries, APM, age timings, opening strategies, and winrates.
+- Displays player summaries, APM, age timings, opening strategies, winrates, and unknown strategies analysis.
 
 **Run:**
 ```bash
