@@ -1,0 +1,271 @@
+import duckdb
+import pandas as pd
+import numpy as np
+from collections import Counter
+from rapidfuzz import fuzz
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.metrics.pairwise import cosine_similarity
+from sklearn.cluster import DBSCAN
+from sklearn.feature_extraction.text import TfidfVectorizer
+from datasketch import MinHash, MinHashLSH
+import mmh3
+
+# --- PARAMETERS ---
+DB_PATH = "warehouse/aoe.duckdb"
+MIN_MATCHES = 10  # Minimum matches to consider a cluster valid
+
+def make_minhash(seq, ngram_n=3, num_perm=128):
+    """Create deterministic MinHash for a sequence of actions"""
+    def hashfunc(x):
+        h = mmh3.hash(x, 42, signed=True)
+        return h & 0xFFFFFFFFFFFFFFFF  # convert to uint64
+
+    m = MinHash(num_perm=num_perm, hashfunc=hashfunc)
+
+    # Tokenize sequence
+    if isinstance(seq, list):
+        tokens = ["_".join(seq[i:i+ngram_n]) for i in range(len(seq) - ngram_n + 1)]
+    else:  # string
+        tokens = [seq.split(',')[i:i+ngram_n] for i in range(len(seq.split(',')) - ngram_n + 1)]
+        tokens = ["_".join(t) for t in tokens]
+
+    for token in tokens:
+        m.update(token.encode("utf-8"))
+    return m
+
+
+
+def fetch_known_strategies(con):
+    """Fetch all known strategies with their build sequences"""
+    query = """
+        SELECT
+            strategy,
+            match_id,
+            player_id,
+            STRING_AGG(activity, ',' ORDER BY action_rank) AS build_order_seq
+        FROM gold.openings
+        WHERE strategy IS NOT NULL AND strategy != 'Unknown'
+        GROUP BY strategy, match_id, player_id
+        ORDER BY strategy, match_id, player_id;
+    """
+    return con.execute(query).fetchdf()
+
+def fetch_unknown_strategies(con):
+    """Fetch unknown strategies with ordered build order sequence"""
+    query = """
+        SELECT
+            match_id,
+            player_id,
+            civilization,
+            map_type,
+            win,
+            STRING_AGG(activity, ',' ORDER BY action_rank) AS build_order_seq
+        FROM gold.openings
+        WHERE strategy = 'Unknown'
+        GROUP BY match_id, player_id, civilization, map_type, win
+    """
+    return con.execute(query).fetchdf()
+
+def analyze_known_variation(df_known, ngram_n=3):
+    """Check how strict known strategies are"""
+    results = []
+
+
+    for strat, group in df_known.groupby('strategy'):
+        # Make sure we have the sequences as strings
+        sequences = group['build_order_seq'].tolist()
+        num_matches = len(sequences)
+
+        # Skip if no sequences
+        if num_matches == 0:
+            continue
+
+        # CountVectorizer for n-gram similarity
+        vectorizer = CountVectorizer(analyzer='char', ngram_range=(ngram_n, ngram_n))
+        X_ngrams = vectorizer.fit_transform(sequences)
+        ngram_sim_matrix = cosine_similarity(X_ngrams)
+
+        # --- Most common build order for Jaccard & Levenshtein ---
+        rep_build = Counter(sequences).most_common(1)[0][0].split(',')
+
+        # Compute Jaccard similarity of each sequence to the representative
+        sim_scores = []
+        for seq in sequences:
+            actions = seq.split(',')
+            set1, set2 = set(actions), set(rep_build)
+            jaccard = len(set1 & set2) / len(set1 | set2)
+            sim_scores.append(jaccard)
+        avg_similarity = sum(sim_scores) / len(sim_scores) if sim_scores else 1.0
+
+        # N-gram similarity: compute upper-triangle mean
+        n = len(sequences)
+        if n > 1:
+            upper_vals = ngram_sim_matrix[np.triu_indices(n, k=1)]
+            avg_ngram_sim = upper_vals.mean()
+        else:
+            avg_ngram_sim = 1.0
+
+        # --- Levenshtein similarity (normalized) ---
+        lev_scores = []
+        for seq in sequences:
+            lev = fuzz.ratio(seq, ','.join(rep_build)) / 100.0  # normalized 0..1
+            lev_scores.append(lev)
+        avg_lev = sum(lev_scores) / len(lev_scores) if lev_scores else 1.0
+
+        results.append({
+            "strategy": strat,
+            "num_matches": num_matches,
+            "avg_jaccard": avg_similarity * 100,  # %
+            "avg_ngram": avg_ngram_sim * 100,      # %
+            "avg_levenshtein": avg_lev * 100  # %
+        })
+
+    return pd.DataFrame(results)
+
+def cluster_unknown_sequences(df_unknown, ngram_n=3, num_perm=128, lsh_threshold=0.5,
+                            dbscan_eps=0.3, dbscan_min_samples=10, min_matches_per_player=2):
+    """
+    Cluster unknown AoE sequences using MinHash + LSH + DBSCAN
+    df_unknown: must have columns ['match_id', 'player_id', 'build_order_seq', 'win']
+    """
+    sequences = df_unknown['build_order_seq'].tolist()
+    match_ids = df_unknown['match_id'].tolist()
+    player_ids = df_unknown['player_id'].tolist()
+
+    # Step 1: LSH bucketing
+    lsh = MinHashLSH(threshold=lsh_threshold, num_perm=num_perm)
+    minhashes = {}
+    for idx, seq in enumerate(sequences):
+        mh = make_minhash(seq, ngram_n, num_perm)
+        key = f"seq{idx}"
+        minhashes[key] = mh
+        lsh.insert(key, mh)
+
+    # Step 2: Collect candidate groups
+    candidate_groups = []
+    visited = set()
+    for key in minhashes.keys():
+        if key in visited:
+            continue
+        bucket = lsh.query(minhashes[key])
+        if len(bucket) > 1:
+            candidate_groups.append(bucket)
+            visited.update(bucket)
+
+    # Step 3: Refine clusters with DBSCAN
+    results = []
+    cluster_id = 0
+
+    for group in candidate_groups:
+        idxs = [int(x[3:]) for x in group]
+        group_seqs = [sequences[i] for i in idxs]
+        group_df = df_unknown.iloc[idxs].copy()
+
+        # Vectorize sequences using n-grams
+        vectorizer = CountVectorizer(analyzer='char', ngram_range=(ngram_n, ngram_n))
+        X = vectorizer.fit_transform(group_seqs)
+
+        # DBSCAN with cosine metric
+        clustering = DBSCAN(metric='cosine', eps=dbscan_eps, min_samples=dbscan_min_samples)
+        labels = clustering.fit_predict(X)
+
+        for label in set(labels):
+            if label == -1:
+                continue  # skip noise
+            cluster_mask = (labels == label)
+            cluster_df = group_df[cluster_mask]
+            cluster_size = len(cluster_df)
+            if cluster_size < dbscan_min_samples:
+                continue
+
+            # --- Check player consistency ---
+            player_counts = cluster_df['player_id'].value_counts()
+            if player_counts.max() < min_matches_per_player:
+                continue  # discard clusters without repeated use by any player
+
+            cluster_seqs = cluster_df['build_order_seq'].tolist()
+
+            # Representative sequence (medoid = closest to centroid)
+            centroid = np.mean(X[cluster_mask].toarray(), axis=0)
+            dists = np.linalg.norm(X[cluster_mask].toarray() - centroid, axis=1)
+            rep_seq = cluster_df.iloc[np.argmin(dists)]['build_order_seq']
+
+            # Average n-gram similarity within cluster
+            sim_matrix = cosine_similarity(X[cluster_mask])
+            upper_vals = sim_matrix[np.triu_indices_from(sim_matrix, k=1)] if cluster_size > 1 else np.array([1.0])
+            avg_ngram = upper_vals.mean()
+
+            # --- Jaccard similarity vs. representative ---
+            jaccard_scores = []
+            rep_tokens = set(rep_seq.split(','))
+            for seq in cluster_seqs:
+                seq_tokens = set(seq.split(','))
+                jaccard = len(rep_tokens & seq_tokens) / len(rep_tokens | seq_tokens)
+                jaccard_scores.append(jaccard)
+            avg_jaccard = np.mean(jaccard_scores)
+
+            # --- Levenshtein similarity vs. representative ---
+            lev_scores = []
+            for seq in cluster_seqs:
+                lev = fuzz.ratio(seq, rep_seq) / 100.0
+                lev_scores.append(lev)
+            avg_lev = np.mean(lev_scores)
+
+            # Cluster stats
+            winrate = cluster_df['win'].mean()
+            num_players = cluster_df['player_id'].nunique()
+            match_list = cluster_df['match_id'].tolist()
+
+            results.append({
+                'cluster_id': cluster_id,
+                'num_matches': cluster_size,
+                'winrate': winrate,
+                'num_players': num_players,
+                'avg_ngram': avg_ngram,
+                'avg_jaccard': avg_jaccard,
+                'avg_levenshtein': avg_lev,
+                #'representative_build': rep_seq,
+                #'match_ids': match_list
+            })
+            cluster_id += 1
+
+    return pd.DataFrame(results).sort_values('winrate', ascending=False)
+
+def main():
+    con = duckdb.connect(DB_PATH)
+    ############################################
+    ### Known strategies analysis (for reference)
+    ############################################
+
+    # df_known = fetch_known_strategies(con)
+    # known_stats = analyze_known_variation(df_known)
+    # print(known_stats.head(10))
+
+    #################################
+    ### Unknown strategies clustering
+    #################################
+    
+    df_unknown = fetch_unknown_strategies(con)
+    #clustered = cluster_unknown_strategies(df_unknown, eps=0.1, min_samples=5)
+    clustered = cluster_unknown_sequences(df_unknown, ngram_n=3, min_matches_per_player=3)
+    print(f"Found {clustered['cluster_id'].nunique()} valid unknown strategy clusters")
+    #print(clustered["match_ids"].iloc[0])
+    print(clustered.head(10))
+
+    ### Debug output
+    # print(f"Found {df_clusters['cluster_id'].nunique()} valid unknown strategy clusters")
+    # print(df_clusters.head(10))
+
+    ### Replace existing table with fresh clusters
+    con.execute("DROP TABLE IF EXISTS gold.clustered_unknown_strategies")
+
+    con.register("df_clusters_view", clustered)
+    con.execute("""
+        CREATE TABLE gold.clustered_unknown_strategies AS
+        SELECT * FROM df_clusters_view
+    """)
+    con.unregister("df_clusters_view")
+
+
+if __name__ == "__main__":
+    main()

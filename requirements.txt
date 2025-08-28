@@ -7,3 +7,6 @@ streamlit==1.36.0
 pytest==8.2.1
 matplotlib==3.10.5
 seaborn==0.13.2
+rapidfuzz==3.14.0
+scikit_learn==1.7.1
+mmh3==5.2.0

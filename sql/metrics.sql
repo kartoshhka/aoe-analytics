@@ -88,23 +88,30 @@ SELECT
 FROM ranked r
 LEFT JOIN gold.player_match_results pmr
     ON r.player_id = pmr.player_id AND r.match_id = pmr.match_id
-WHERE r.action_rank <= 50
+WHERE r.action_rank <= 100
 ORDER BY r.elo, r.match_id, r.player_id, r.action_rank;
 
 ------------------------------------------------------------
--- 4. Winrate by civilization – dynamic civilizations
+-- 4. Winrate & playrate by civilization – dynamic civilizations
 ------------------------------------------------------------
 CREATE OR REPLACE TABLE gold.winrate_civ AS
-SELECT
-    civilization,
-    COUNT(*) FILTER (WHERE win = 1) * 1.0 / COUNT(*) AS winrate,
-    COUNT(*) AS total_games
-FROM (
+WITH base AS (
     SELECT DISTINCT match_id, player_id, civilization, win
     FROM events_clean
     WHERE civilization IS NOT NULL
+),
+totals AS (
+    SELECT COUNT(*) AS all_games
+    FROM base
 )
-GROUP BY civilization
+SELECT
+    b.civilization,
+    COUNT(*) FILTER (WHERE b.win = 1) * 1.0 / COUNT(*) AS winrate,
+    COUNT(*) AS total_games,
+    COUNT(*) * 1.0 / t.all_games AS playrate
+FROM base b
+CROSS JOIN totals t
+GROUP BY b.civilization, t.all_games
 ORDER BY winrate DESC;
 ------------------------------------------------------------
 -- 4. Winrate by strategy

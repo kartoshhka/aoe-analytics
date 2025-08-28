@@ -104,7 +104,7 @@ opening_df['match_id'] = opening_df['match_id'].apply(lambda x: short_id(x, 10))
 
 # Winrate by civilization
 winrate_query = f"""
-    SELECT civilization, total_games, winrate
+    SELECT civilization, total_games, winrate, playrate
     FROM gold.winrate_civ
     WHERE civilization IN ({','.join([f"'{c}'" for c in selected_civ])})
 """
@@ -118,6 +118,16 @@ winrate_civ_query = f"""
     WHERE {civ_conditions}
 """
 winrate_civ_df = con.execute(winrate_civ_query).fetchdf()
+
+# Unknown strategies summary
+unknown_strategies_query = """
+            SELECT num_matches, num_players,
+                ROUND(winrate, 2) AS winrate,
+                avg_ngram, avg_jaccard, avg_levenshtein
+            FROM gold.clustered_unknown_strategies
+            ORDER BY winrate DESC, num_matches DESC
+        """
+unknown_strategies_df = con.execute(unknown_strategies_query).fetchdf()
 
 # ----------------------------------------
 # 4️⃣ Display metrics in Streamlit
@@ -169,3 +179,6 @@ st.dataframe(winrate_df)
 
 st.header("♟️ Winrate by Strategy")
 st.dataframe(winrate_civ_df)
+
+st.header("🧩 Unknown Strategies Analysis")
+st.dataframe(unknown_strategies_df)
