@@ -39,3 +39,13 @@ def test_player_summary(con):
     result = con.execute("SELECT * FROM gold.player_summary LIMIT 1").fetchdf()
     expected_cols = {"player_id", "total_matches", "total_wins", "total_loses", "winrate", "max_elo"}
     assert expected_cols.issubset(result.columns)
+
+def test_winrate_civ(con):
+    result = con.execute("SELECT * FROM gold.winrate_civ LIMIT 1").fetchdf()
+    expected_cols = {"civilization", "total_games", "winrate", "playrate"}
+    assert expected_cols.issubset(result.columns)
+
+def test_winrate_strat(con):
+    result = con.execute("SELECT * FROM gold.winrate_strat LIMIT 1").fetchdf()
+    expected_cols = {"strategy", "total_games", "winrate", "civilizations"}
+    assert expected_cols.issubset(result.columns)

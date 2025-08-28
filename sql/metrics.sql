@@ -54,7 +54,7 @@ GROUP BY civilization, activity
 ORDER BY civilization, avg_time_mins;
 
 ------------------------------------------------------------
--- 3. Opening build orders – first 50 actions of high-elo players
+-- 3. Opening build orders – first 100 actions 
 ------------------------------------------------------------
 CREATE OR REPLACE TABLE gold.openings AS
 WITH ranked AS (
