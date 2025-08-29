@@ -229,7 +229,9 @@ def cluster_unknown_sequences(df_unknown, ngram_n=3, num_perm=128, lsh_threshold
             })
             cluster_id += 1
 
-    return pd.DataFrame(results).sort_values('winrate', ascending=False)
+    if not len(results) == 0:
+        return pd.DataFrame(results).sort_values('winrate', ascending=False)
+    return pd.DataFrame(results)
 
 def main():
     con = duckdb.connect(DB_PATH)
@@ -248,23 +250,26 @@ def main():
     df_unknown = fetch_unknown_strategies(con)
     #clustered = cluster_unknown_strategies(df_unknown, eps=0.1, min_samples=5)
     clustered = cluster_unknown_sequences(df_unknown, ngram_n=3, min_matches_per_player=3)
-    print(f"Found {clustered['cluster_id'].nunique()} valid unknown strategy clusters")
-    #print(clustered["match_ids"].iloc[0])
-    print(clustered.head(10))
 
-    ### Debug output
-    # print(f"Found {df_clusters['cluster_id'].nunique()} valid unknown strategy clusters")
-    # print(df_clusters.head(10))
+    if not clustered.empty:
 
-    ### Replace existing table with fresh clusters
-    con.execute("DROP TABLE IF EXISTS gold.clustered_unknown_strategies")
+        print(f"Found {clustered['cluster_id'].nunique()} valid unknown strategy clusters")
+        #print(clustered["match_ids"].iloc[0])
+        print(clustered.head(10))
 
-    con.register("df_clusters_view", clustered)
-    con.execute("""
-        CREATE TABLE gold.clustered_unknown_strategies AS
-        SELECT * FROM df_clusters_view
-    """)
-    con.unregister("df_clusters_view")
+        ### Debug output
+        # print(f"Found {df_clusters['cluster_id'].nunique()} valid unknown strategy clusters")
+        # print(df_clusters.head(10))
+
+        ### Replace existing table with fresh clusters
+        con.execute("DROP TABLE IF EXISTS gold.clustered_unknown_strategies")
+
+        con.register("df_clusters_view", clustered)
+        con.execute("""
+            CREATE TABLE gold.clustered_unknown_strategies AS
+            SELECT * FROM df_clusters_view
+        """)
+        con.unregister("df_clusters_view")
 
 
 if __name__ == "__main__":

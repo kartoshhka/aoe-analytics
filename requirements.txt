@@ -10,3 +10,4 @@ seaborn==0.13.2
 rapidfuzz==3.14.0
 scikit_learn==1.7.1
 mmh3==5.2.0
+datasketch==1.6.5
