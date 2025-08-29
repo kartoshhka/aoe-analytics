@@ -5,27 +5,43 @@ CREATE SCHEMA IF NOT EXISTS gold;
 -- 1. Player summary (max Elo, total matches, wins, loses, winrate)
 ------------------------------------------------------------
 -- One row per player-match
-CREATE OR REPLACE TABLE gold.player_match_results AS
-SELECT
-    player_id,
-    match_id,
-    MAX(elo) AS elo,    -- get the player's elo in that match
-    MAX(win) AS win     -- win flag per match
-FROM events_clean
-GROUP BY player_id, match_id;
-
 CREATE OR REPLACE TABLE gold.player_summary AS
+WITH strat AS (
+    SELECT
+        player_id,
+        match_id,
+        strategy
+    FROM events_clean
+    GROUP BY player_id, match_id, strategy
+),
+strat_count AS (
+    SELECT
+        player_id,
+        strategy,
+        COUNT(*) AS matches_with_strategy
+    FROM strat
+    WHERE strategy IS NOT NULL
+    GROUP BY player_id, strategy
+),
+strategy_list AS (
+    SELECT
+        player_id,
+        STRING_AGG(strategy || ' - ' || matches_with_strategy, ', ') AS used_strategies
+    FROM strat_count
+    GROUP BY player_id
+)
 SELECT
-    player_id,
-    MAX(elo) AS max_elo,
-    COUNT(DISTINCT match_id) AS total_matches,
-    SUM(CASE WHEN win = 1 THEN 1 ELSE 0 END) AS total_wins,
-    SUM(CASE WHEN win = 0 THEN 1 ELSE 0 END) AS total_loses,
-    CAST(SUM(CASE WHEN win = 1 THEN 1 ELSE 0 END) AS DOUBLE)
-        / COUNT(DISTINCT match_id) AS winrate
-FROM gold.player_match_results
-WHERE player_id IS NOT NULL
-GROUP BY player_id
+    pmr.player_id,
+    MAX(pmr.elo) AS max_elo,
+    COUNT(DISTINCT pmr.match_id) AS total_matches,
+    SUM(pmr.win) AS total_wins,
+    COUNT(*) - SUM(pmr.win) AS total_loses,
+    SUM(pmr.win) * 1.0 / COUNT(DISTINCT pmr.match_id) AS winrate,
+    sl.used_strategies
+FROM gold.player_match_results pmr
+LEFT JOIN strategy_list sl ON pmr.player_id = sl.player_id
+WHERE pmr.player_id IS NOT NULL
+GROUP BY pmr.player_id, sl.used_strategies
 ORDER BY max_elo DESC;
 
 ------------------------------------------------------------
@@ -54,7 +70,7 @@ GROUP BY civilization, activity
 ORDER BY civilization, avg_time_mins;
 
 ------------------------------------------------------------
--- 3. Opening build orders – first 100 actions 
+-- 3. Opening build orders – first 100 actions
 ------------------------------------------------------------
 CREATE OR REPLACE TABLE gold.openings AS
 WITH ranked AS (
