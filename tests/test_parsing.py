@@ -24,13 +24,14 @@ def test_apm_has_expected_columns(con):
 
 def test_age_timings(con):
     result = con.execute("SELECT * FROM gold.age_timings LIMIT 1").fetchdf()
-    expected_cols = {"civilization", "activity", "avg_time_min"}
+    expected_cols = {"civilization", "activity", "avg_time_mins"}
     assert expected_cols.issubset(result.columns)
 
 
 def test_openings(con):
     result = con.execute("SELECT * FROM gold.openings LIMIT 1").fetchdf()
-    expected_cols = {"civilization", "match_id", "player_id", "elo", "activity", "action_rank"}
+    expected_cols = {"civilization", "civilization_category", "map_type",
+        "strategy","match_id", "player_id", "elo", "activity", "action_rank"}
     assert expected_cols.issubset(result.columns)
 
 
