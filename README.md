@@ -1,4 +1,5 @@
 # Age of Empires Analytics Pipeline
+<img width="1704" height="872" alt="image" src="https://github.com/user-attachments/assets/6b347fb8-e336-4244-a0f3-b239a36fb036" />
 
 
 ## Summary
