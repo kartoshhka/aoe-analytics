@@ -9,6 +9,7 @@ from sklearn.cluster import DBSCAN
 from sklearn.feature_extraction.text import TfidfVectorizer
 from datasketch import MinHash, MinHashLSH
 import mmh3
+import streamlit as st
 
 # --- PARAMETERS ---
 DB_PATH = "warehouse/aoe.duckdb"
@@ -234,7 +235,14 @@ def cluster_unknown_sequences(df_unknown, ngram_n=3, num_perm=128, lsh_threshold
     return pd.DataFrame(results)
 
 def main():
-    con = duckdb.connect(DB_PATH)
+    md_token = st.secrets["MOTHERDUCK_TOKEN"]
+
+    con = duckdb.connect(f"md:?motherduck_token={md_token}")
+    if con is None:
+        print("Failed to connect to MotherDuck Database, using local database instead.")
+        con = duckdb.connect(DB_PATH)
+    else:
+        con.execute("USE aoe;")
     ############################################
     ### Known strategies analysis (for reference)
     ############################################

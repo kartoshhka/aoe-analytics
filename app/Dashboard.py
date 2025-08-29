@@ -32,7 +32,16 @@ def short_id(id_str, length=8):
 # ----------------------------------------
 # 1️⃣ Connect to DuckDB
 # ----------------------------------------
-con = duckdb.connect(database="warehouse/aoe.duckdb", read_only=True)
+
+md_token = st.secrets["MOTHERDUCK_TOKEN"]
+
+con = duckdb.connect(f"md:?motherduck_token={md_token}")
+if con is None:
+    print("Failed to connect to MotherDuck Database, using local database instead.")
+    con = duckdb.connect(database="warehouse/aoe.duckdb", read_only=True)
+
+else:
+    con.execute("USE aoe;")
 
 # ----------------------------------------
 # 2️⃣ Sidebar filters
