@@ -25,5 +25,6 @@ jobs:
           python pipelines/extract_xes.py
           python pipelines/transform_events.py
           python pipelines/read_metrics.py
+          python pipelines/discover_strategies.py
       - name: Run tests
         run: pytest -q

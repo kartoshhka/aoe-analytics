@@ -5,6 +5,16 @@ CREATE SCHEMA IF NOT EXISTS gold;
 -- 1. Player summary (max Elo, total matches, wins, loses, winrate)
 ------------------------------------------------------------
 -- One row per player-match
+CREATE OR REPLACE TABLE gold.player_match_results AS
+SELECT
+    player_id,
+    match_id,
+    MAX(elo) AS elo,    -- get the player's elo in that match
+    MAX(win) AS win     -- win flag per match
+FROM events_clean
+GROUP BY player_id, match_id;
+
+
 CREATE OR REPLACE TABLE gold.player_summary AS
 WITH strat AS (
     SELECT
